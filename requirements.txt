@@ -1,0 +1,4 @@
+ipythonblocks
+ipywidgets
+qpsolvers
+sortedcontainers
