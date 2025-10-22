@@ -1,4 +1,4 @@
 ipythonblocks
 ipywidgets
-qpsolvers
+qpsolvers[open_source_solvers]
 sortedcontainers
