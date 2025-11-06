@@ -2,3 +2,5 @@ ipythonblocks
 ipywidgets
 qpsolvers[open_source_solvers]
 sortedcontainers
+imgkit
+nbconvert[webpdf]
