@@ -202,6 +202,10 @@ def alpha_beta_player(game, state):
     return alpha_beta_search(state, game)
 
 
+# Alias for backward compatibility
+alphabeta_player = alpha_beta_player
+
+
 def minmax_player(game,state):
     return minmax_decision(state,game)
 

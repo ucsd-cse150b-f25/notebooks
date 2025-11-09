@@ -10,6 +10,8 @@ from IPython.display import HTML
 from IPython.display import display
 from PIL import Image
 from matplotlib import lines
+from ipycanvas import Canvas as ipyCanvas, hold_canvas
+from ipywidgets import Output
 
 from games import TicTacToe, alpha_beta_player, random_player, Fig52Extended
 from learning import DataSet
@@ -378,112 +380,251 @@ def display_html(html_string):
 ################################################################################
 
 
-class Canvas_TicTacToe(Canvas):
-    """Play a 3x3 TicTacToe game on HTML canvas"""
+class Canvas_TicTacToe:
+    """Play a 3x3 TicTacToe game using ipycanvas widget"""
 
     def __init__(self, varname, player_1='human', player_2='random',
-                 width=300, height=350, cid=None):
+                 width=300, height=350):
         valid_players = ('human', 'random', 'alpha_beta')
         if player_1 not in valid_players or player_2 not in valid_players:
             raise TypeError("Players must be one of {}".format(valid_players))
-        super().__init__(varname, width, height, cid)
+
+        self.name = varname
+        self.width = width
+        self.height = height
         self.ttt = TicTacToe()
         self.state = self.ttt.initial
         self.turn = 0
-        self.strokeWidth(5)
         self.players = (player_1, player_2)
-        self.font("20px Arial")
+
+        # Create ipycanvas Canvas
+        self.canvas = ipyCanvas(width=width, height=height)
+        self.canvas.fill_style = 'rgba(158, 167, 184, 0.2)'
+        self.canvas.fill_rect(0, 0, width, height)
+
+        # Create output widget for debug messages (optional)
+        self.output = Output()
+
+        # Register mouse click handler
+        self.canvas.on_mouse_down(self.handle_click)
+
+        # Draw initial board
         self.draw_board()
 
+        # Display the canvas immediately (so it shows even when assigned to variable)
+        display(self.canvas)
+
+    def handle_click(self, x, y):
+        """Handle mouse click events from ipycanvas"""
+        with self.output:
+            print(f"Click at ({x}, {y})")
+
+        self.mouse_click(x, y)
+
     def mouse_click(self, x, y):
+        """Process a mouse click at coordinates (x, y)"""
         player = self.players[self.turn]
+
+        # Check if game is over
         if self.ttt.terminal_test(self.state):
+            # Check if restart button clicked
             if 0.55 <= x / self.width <= 0.95 and 6 / 7 <= y / self.height <= 6 / 7 + 1 / 8:
                 self.state = self.ttt.initial
                 self.turn = 0
                 self.draw_board()
             return
 
+        # Determine move based on player type
         if player == 'human':
-            x, y = int(3 * x / self.width) + 1, int(3 * y / (self.height * 6 / 7)) + 1
-            if (x, y) not in self.ttt.actions(self.state):
-                # Invalid move
+            # Convert click coordinates to board position
+            grid_x = int(3 * x / self.width) + 1
+            grid_y = int(3 * y / (self.height * 6 / 7)) + 1
+            move = (grid_x, grid_y)
+
+            # Validate move
+            if move not in self.ttt.actions(self.state):
+                with self.output:
+                    print(f"Invalid move: {move}")
                 return
-            move = (x, y)
         elif player == 'alpha_beta':
             move = alpha_beta_player(self.ttt, self.state)
-        else:
+        else:  # random
             move = random_player(self.ttt, self.state)
+
+        # Make the move
         self.state = self.ttt.result(self.state, move)
         self.turn ^= 1
         self.draw_board()
 
+        # If next player is AI and game isn't over, automatically make their move
+        if not self.ttt.terminal_test(self.state):
+            next_player = self.players[self.turn]
+            if next_player in ('random', 'alpha_beta'):
+                # AI's turn - make move automatically
+                if next_player == 'alpha_beta':
+                    ai_move = alpha_beta_player(self.ttt, self.state)
+                else:
+                    ai_move = random_player(self.ttt, self.state)
+
+                self.state = self.ttt.result(self.state, ai_move)
+                self.turn ^= 1
+                self.draw_board()
+
     def draw_board(self):
-        self.clear()
-        self.stroke(0, 0, 0)
-        offset = 1 / 20
-        self.line_n(0 + offset, (1 / 3) * 6 / 7, 1 - offset, (1 / 3) * 6 / 7)
-        self.line_n(0 + offset, (2 / 3) * 6 / 7, 1 - offset, (2 / 3) * 6 / 7)
-        self.line_n(1 / 3, (0 + offset) * 6 / 7, 1 / 3, (1 - offset) * 6 / 7)
-        self.line_n(2 / 3, (0 + offset) * 6 / 7, 2 / 3, (1 - offset) * 6 / 7)
+        """Draw the complete TicTacToe board"""
+        with hold_canvas(self.canvas):
+            # Clear canvas
+            self.canvas.clear()
+            self.canvas.fill_style = 'rgba(158, 167, 184, 0.2)'
+            self.canvas.fill_rect(0, 0, self.width, self.height)
 
-        board = self.state.board
-        for mark in board:
-            if board[mark] == 'X':
-                self.draw_x(mark)
-            elif board[mark] == 'O':
-                self.draw_o(mark)
-        if self.ttt.terminal_test(self.state):
-            # End game message
-            utility = self.ttt.utility(self.state, self.ttt.to_move(self.ttt.initial))
-            if utility == 0:
-                self.text_n('Game Draw!', offset, 6 / 7 + offset)
+            # Draw grid lines
+            self.canvas.stroke_style = 'black'
+            self.canvas.line_width = 5
+            offset = self.width / 20
+
+            # Horizontal lines - using stroke_line for simplicity
+            self.canvas.stroke_line(offset, (1 / 3) * self.height * 6 / 7,
+                                   self.width - offset, (1 / 3) * self.height * 6 / 7)
+            self.canvas.stroke_line(offset, (2 / 3) * self.height * 6 / 7,
+                                   self.width - offset, (2 / 3) * self.height * 6 / 7)
+
+            # Vertical lines - using stroke_line for simplicity
+            self.canvas.stroke_line(self.width / 3, offset * 6 / 7,
+                                   self.width / 3, (self.height - offset) * 6 / 7)
+            self.canvas.stroke_line(2 * self.width / 3, offset * 6 / 7,
+                                   2 * self.width / 3, (self.height - offset) * 6 / 7)
+
+            # Draw X's and O's
+            board = self.state.board
+            for position in board:
+                if board[position] == 'X':
+                    self.draw_x(position)
+                elif board[position] == 'O':
+                    self.draw_o(position)
+
+            # Draw status text and end game elements
+            self.canvas.font = '20px Arial'
+            self.canvas.fill_style = 'black'
+
+            if self.ttt.terminal_test(self.state):
+                # Game over - show result
+                utility = self.ttt.utility(self.state, self.ttt.to_move(self.ttt.initial))
+
+                if utility == 0:
+                    self.canvas.fill_text('Game Draw!', offset, self.height * 6 / 7 + offset)
+                else:
+                    winner = "X" if utility > 0 else "O"
+                    self.canvas.fill_text(f'Player {winner} wins!', offset, self.height * 6 / 7 + offset)
+
+                    # Draw winning line
+                    self.canvas.stroke_style = 'green' if utility > 0 else 'red'
+                    self.canvas.line_width = 8
+                    self.draw_winning_line()
+
+                # Draw restart button
+                self.canvas.fill_style = 'blue'
+                self.canvas.fill_rect(
+                    self.width * (0.5 + offset / self.width),
+                    self.height * 6 / 7,
+                    self.width * 0.4,
+                    self.height / 8
+                )
+                self.canvas.fill_style = 'white'
+                self.canvas.fill_text('Restart', self.width * 0.55, self.height * 13 / 14)
             else:
-                self.text_n('Player {} wins!'.format("XO"[utility < 0]), offset, 6 / 7 + offset)
-                # Find the 3 and draw a line
-                self.stroke([255, 0][self.turn], [0, 255][self.turn], 0)
-                for i in range(3):
-                    if all([(i + 1, j + 1) in self.state.board for j in range(3)]) and \
-                            len({self.state.board[(i + 1, j + 1)] for j in range(3)}) == 1:
-                        self.line_n(i / 3 + 1 / 6, offset * 6 / 7, i / 3 + 1 / 6, (1 - offset) * 6 / 7)
-                    if all([(j + 1, i + 1) in self.state.board for j in range(3)]) and \
-                            len({self.state.board[(j + 1, i + 1)] for j in range(3)}) == 1:
-                        self.line_n(offset, (i / 3 + 1 / 6) * 6 / 7, 1 - offset, (i / 3 + 1 / 6) * 6 / 7)
-                if all([(i + 1, i + 1) in self.state.board for i in range(3)]) and \
-                        len({self.state.board[(i + 1, i + 1)] for i in range(3)}) == 1:
-                    self.line_n(offset, offset * 6 / 7, 1 - offset, (1 - offset) * 6 / 7)
-                if all([(i + 1, 3 - i) in self.state.board for i in range(3)]) and \
-                        len({self.state.board[(i + 1, 3 - i)] for i in range(3)}) == 1:
-                    self.line_n(offset, (1 - offset) * 6 / 7, 1 - offset, offset * 6 / 7)
-            # restart button
-            self.fill(0, 0, 255)
-            self.rect_n(0.5 + offset, 6 / 7, 0.4, 1 / 8)
-            self.fill(0, 0, 0)
-            self.text_n('Restart', 0.5 + 2 * offset, 13 / 14)
-        else:  # Print which player's turn it is
-            self.text_n("Player {}'s move({})".format("XO"[self.turn], self.players[self.turn]),
-                        offset, 6 / 7 + offset)
-
-        self.update()
+                # Show current player
+                current_player = "X" if self.turn == 0 else "O"
+                player_type = self.players[self.turn]
+                self.canvas.fill_text(
+                    f"Player {current_player}'s move ({player_type})",
+                    offset,
+                    self.height * 6 / 7 + offset
+                )
 
     def draw_x(self, position):
-        self.stroke(0, 255, 0)
+        """Draw an X at the given board position"""
         x, y = [i - 1 for i in position]
-        offset = 1 / 15
-        self.line_n(x / 3 + offset, (y / 3 + offset) * 6 / 7, x / 3 + 1 / 3 - offset, (y / 3 + 1 / 3 - offset) * 6 / 7)
-        self.line_n(x / 3 + 1 / 3 - offset, (y / 3 + offset) * 6 / 7, x / 3 + offset, (y / 3 + 1 / 3 - offset) * 6 / 7)
+        offset = self.width / 15
+        cell_width = self.width / 3
+        cell_height = self.height * 6 / 7 / 3
+
+        x1 = x * cell_width + offset
+        y1 = y * cell_height + offset
+        x2 = (x + 1) * cell_width - offset
+        y2 = (y + 1) * cell_height - offset
+
+        self.canvas.stroke_style = 'green'
+        self.canvas.line_width = 5
+
+        # Draw X using stroke_line (simpler and more reliable)
+        self.canvas.stroke_line(x1, y1, x2, y2)
+        self.canvas.stroke_line(x2, y1, x1, y2)
 
     def draw_o(self, position):
-        self.stroke(255, 0, 0)
+        """Draw an O at the given board position"""
+        import math
         x, y = [i - 1 for i in position]
-        self.arc_n(x / 3 + 1 / 6, (y / 3 + 1 / 6) * 6 / 7, 1 / 9, 0, 360)
+        cell_width = self.width / 3
+        cell_height = self.height * 6 / 7 / 3
+
+        center_x = (x + 0.5) * cell_width
+        center_y = (y + 0.5) * cell_height
+        radius = min(cell_width, cell_height) / 3
+
+        self.canvas.stroke_style = 'red'
+        self.canvas.line_width = 5
+
+        # Draw O using stroke_arc (simpler and more reliable)
+        self.canvas.stroke_arc(center_x, center_y, radius, 0, 2 * math.pi)
+
+    def draw_winning_line(self):
+        """Draw a line through the winning three squares"""
+        offset = self.width / 20
+
+        # Check rows
+        for i in range(3):
+            if (all([(i + 1, j + 1) in self.state.board for j in range(3)]) and
+                    len({self.state.board[(i + 1, j + 1)] for j in range(3)}) == 1):
+                # Winning column
+                x = (i + 0.5) * self.width / 3
+                self.canvas.begin_path()
+                self.canvas.move_to(x, offset * 6 / 7)
+                self.canvas.line_to(x, (self.height - offset) * 6 / 7)
+                self.canvas.stroke()
+
+            if (all([(j + 1, i + 1) in self.state.board for j in range(3)]) and
+                    len({self.state.board[(j + 1, i + 1)] for j in range(3)}) == 1):
+                # Winning row
+                y = (i + 0.5) * self.height * 6 / 7 / 3
+                self.canvas.begin_path()
+                self.canvas.move_to(offset, y)
+                self.canvas.line_to(self.width - offset, y)
+                self.canvas.stroke()
+
+        # Check diagonals
+        if (all([(i + 1, i + 1) in self.state.board for i in range(3)]) and
+                len({self.state.board[(i + 1, i + 1)] for i in range(3)}) == 1):
+            # Top-left to bottom-right diagonal
+            self.canvas.begin_path()
+            self.canvas.move_to(offset, offset * 6 / 7)
+            self.canvas.line_to(self.width - offset, (self.height - offset) * 6 / 7)
+            self.canvas.stroke()
+
+        if (all([(i + 1, 3 - i) in self.state.board for i in range(3)]) and
+                len({self.state.board[(i + 1, 3 - i)] for i in range(3)}) == 1):
+            # Top-right to bottom-left diagonal
+            self.canvas.begin_path()
+            self.canvas.move_to(offset, (self.height - offset) * 6 / 7)
+            self.canvas.line_to(self.width - offset, offset * 6 / 7)
+            self.canvas.stroke()
 
 
 class Canvas_min_max(Canvas):
     """MinMax for Fig52Extended on HTML canvas"""
 
     def __init__(self, varname, util_list, width=800, height=600, cid=None):
-        super.__init__(varname, width, height, cid)
+        super().__init__(varname, width, height, cid)
         self.utils = {node: util for node, util in zip(range(13, 40), util_list)}
         self.game = Fig52Extended()
         self.game.utils = self.utils
@@ -603,6 +744,113 @@ class Canvas_min_max(Canvas):
                 self.line_n(x1, y1, x2, y2)
         self.update()
 
+    def draw_minimax(self, show=False):
+        """
+        Draw a 3-ary, depth-3 minimax tree (MAX -> MIN -> MAX -> leaves).
+        Uses self.util_list (27 ints) in strict left-to-right leaf order.
+        Returns a single matplotlib.figure.Figure.
+        """
+        import math
+        import matplotlib.pyplot as plt
+    
+        # ---- data prep: exactly 27 utilities (3^3) ----
+        vals = list(self.util_list if hasattr(self, "util_list") else [])
+        if not vals:
+            # fall back to whatever was passed at init: self.utils may be a dict
+            try:
+                vals = list(self.utils.values())
+            except Exception:
+                vals = []
+        if len(vals) < 27:
+            vals = vals + [0] * (27 - len(vals))
+        elif len(vals) > 27:
+            vals = vals[:27]
+    
+        # Leaf values L3[i][j][k] (i,j,k in 0..2). Also compute upward minimax.
+        # L2 = MAX of 3 children; L1 = MIN of its 3 L2 children; ROOT = MAX of L1.
+        L3 = [[[None]*3 for _ in range(3)] for _ in range(3)]
+        it = iter(vals)
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    L3[i][j][k] = next(it)
+    
+        L2 = [[max(L3[i][j]) for j in range(3)] for i in range(3)]       # MAX level
+        L1 = [min(L2[i]) for i in range(3)]                               # MIN level
+        ROOT = max(L1)                                                    # MAX root
+    
+        # ---- layout: hand-placed hierarchy (top-down; stable & clean) ----
+        # x positions: 27 leaves evenly spaced; internal nodes centered above their children
+        def xs_for_leaves(n_leaves):
+            return [(x + 0.5)/n_leaves for x in range(n_leaves)]  # 0..1 range
+    
+        leaf_x = xs_for_leaves(27)
+        # group leaves into triplets to center their parents
+        def center(xs): return sum(xs)/len(xs)
+    
+        # map leaves left-to-right into (i,j,k) blocks of 3
+        idx = 0
+        x_L3 = [[[None]*3 for _ in range(3)] for _ in range(3)]
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    x_L3[i][j][k] = leaf_x[idx]; idx += 1
+    
+        x_L2 = [[center([x_L3[i][j][k] for k in range(3)]) for j in range(3)] for i in range(3)]
+        x_L1 = [center([x_L2[i][j] for j in range(3)]) for i in range(3)]
+        x_ROOT = center(x_L1)
+    
+        # y positions (top=1.0 → bottom=0.0)
+        y_root, y_L1, y_L2, y_L3 = 0.95, 0.70, 0.45, 0.15
+    
+        # ---- draw exactly one figure ----
+        plt.close('all')
+        fig, ax = plt.subplots(figsize=(12, 6), dpi=140)
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.axis("off")
+    
+        # helpers
+        def node(ax, x, y, txt, size=900):
+            circ = plt.Circle((x, y), 0.02, fill=True)
+            ax.add_patch(circ)
+            ax.text(x, y, txt, ha='center', va='center', fontsize=9, color='white')
+    
+        def edge(ax, x1, y1, x2, y2):
+            ax.plot([x1, x2], [y1, y2])
+    
+        # ---- edges ----
+        for i in range(3):
+            edge(ax, x_ROOT, y_root, x_L1[i], y_L1)
+            for j in range(3):
+                edge(ax, x_L1[i], y_L1, x_L2[i][j], y_L2)
+                for k in range(3):
+                    edge(ax, x_L2[i][j], y_L2, x_L3[i][j][k], y_L3)
+    
+        # ---- nodes & labels ----
+        # root MAX with value
+        node(ax, x_ROOT, y_root, f"MAX\n{ROOT}")
+    
+        # L1 MIN nodes with values
+        for i in range(3):
+            node(ax, x_L1[i], y_L1, f"MIN\n{L1[i]}")
+    
+        # L2 MAX nodes with values
+        for i in range(3):
+            for j in range(3):
+                node(ax, x_L2[i][j], y_L2, f"MAX\n{L2[i][j]}")
+    
+        # leaves with utilities (U=...)
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    u = L3[i][j][k]
+                    node(ax, x_L3[i][j][k], y_L3, f"U={u}", size=700)
+    
+        fig.tight_layout()
+        if show:
+            plt.show()
+        return fig
 
 class Canvas_alpha_beta(Canvas):
     """Alpha-beta pruning for Fig52Extended on HTML canvas"""
@@ -772,6 +1020,130 @@ class Canvas_alpha_beta(Canvas):
                 self.text_n(alpha, x - self.l / 2, y - self.l / 10)
                 self.text_n(beta, x + self.l, y - self.l / 10)
         self.update()
+
+    def draw_alphabeta(self, show=False):
+        """
+        Draw a 3-ary, depth-3 alphabeta tree (MAX -> MIN -> MAX -> leaves).
+        Uses self.utils (27 ints) in strict left-to-right leaf order.
+        Returns a single matplotlib.figure.Figure.
+        """
+        import math
+        import matplotlib.pyplot as plt
+
+        # ---- data prep: exactly 27 utilities (3^3) ----
+        vals = []
+        # Extract utilities for leaves (nodes 13-39)
+        for node in range(13, 40):
+            if node in self.utils:
+                vals.append(self.utils[node])
+            else:
+                vals.append(0)
+
+        if len(vals) < 27:
+            vals = vals + [0] * (27 - len(vals))
+        elif len(vals) > 27:
+            vals = vals[:27]
+
+        # Leaf values L3[i][j][k] (i,j,k in 0..2). Also compute upward minimax.
+        # L2 = MAX of 3 children; L1 = MIN of its 3 L2 children; ROOT = MAX of L1.
+        L3 = [[[None]*3 for _ in range(3)] for _ in range(3)]
+        it = iter(vals)
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    L3[i][j][k] = next(it)
+
+        L2 = [[max(L3[i][j]) for j in range(3)] for i in range(3)]       # MAX level
+        L1 = [min(L2[i]) for i in range(3)]                               # MIN level
+        ROOT = max(L1)                                                    # MAX root
+
+        # ---- layout: hand-placed hierarchy (top-down; stable & clean) ----
+        # x positions: 27 leaves evenly spaced; internal nodes centered above their children
+        def xs_for_leaves(n_leaves):
+            return [(x + 0.5)/n_leaves for x in range(n_leaves)]  # 0..1 range
+
+        leaf_x = xs_for_leaves(27)
+        # group leaves into triplets to center their parents
+        def center(xs): return sum(xs)/len(xs)
+
+        # map leaves left-to-right into (i,j,k) blocks of 3
+        idx = 0
+        x_L3 = [[[None]*3 for _ in range(3)] for _ in range(3)]
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    x_L3[i][j][k] = leaf_x[idx]; idx += 1
+
+        x_L2 = [[center([x_L3[i][j][k] for k in range(3)]) for j in range(3)] for i in range(3)]
+        x_L1 = [center([x_L2[i][j] for j in range(3)]) for i in range(3)]
+        x_ROOT = center(x_L1)
+
+        # y positions (top=1.0 → bottom=0.0)
+        y_root, y_L1, y_L2, y_L3 = 0.95, 0.70, 0.45, 0.15
+
+        # ---- draw exactly one figure ----
+        plt.close('all')
+        fig, ax = plt.subplots(figsize=(12, 6), dpi=140)
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.axis("off")
+
+        # helpers
+        def node(ax, x, y, txt, size=900, color='blue'):
+            circ = plt.Circle((x, y), 0.02, fill=True, color=color)
+            ax.add_patch(circ)
+            ax.text(x, y, txt, ha='center', va='center', fontsize=9, color='white')
+
+        def edge(ax, x1, y1, x2, y2, color='black', linewidth=1):
+            ax.plot([x1, x2], [y1, y2], color=color, linewidth=linewidth)
+
+        # Track which nodes are pruned (from self.pruned if available)
+        pruned_nodes = getattr(self, 'pruned', set())
+
+        # ---- edges ----
+        for i in range(3):
+            edge(ax, x_ROOT, y_root, x_L1[i], y_L1)
+            for j in range(3):
+                # Check if this node would be pruned
+                node_id = 1 + i  # L1 nodes are 1, 2, 3
+                is_pruned = node_id in pruned_nodes
+                edge_color = 'gray' if is_pruned else 'black'
+                edge(ax, x_L1[i], y_L1, x_L2[i][j], y_L2, color=edge_color)
+                for k in range(3):
+                    # Check if L2 node would be pruned
+                    l2_node_id = 1 + i * 3 + j + 3  # L2 nodes are 4-12
+                    is_pruned = l2_node_id in pruned_nodes
+                    edge_color = 'gray' if is_pruned else 'black'
+                    edge(ax, x_L2[i][j], y_L2, x_L3[i][j][k], y_L3, color=edge_color)
+
+        # ---- nodes & labels ----
+        # root MAX with value
+        node(ax, x_ROOT, y_root, f"MAX\n{ROOT}", color='green')
+
+        # L1 MIN nodes with values
+        for i in range(3):
+            node_id = 1 + i
+            node_color = 'gray' if node_id in pruned_nodes else 'red'
+            node(ax, x_L1[i], y_L1, f"MIN\n{L1[i]}", color=node_color)
+
+        # L2 MAX nodes with values
+        for i in range(3):
+            for j in range(3):
+                node_id = 1 + i * 3 + j + 3
+                node_color = 'gray' if node_id in pruned_nodes else 'green'
+                node(ax, x_L2[i][j], y_L2, f"MAX\n{L2[i][j]}", color=node_color)
+
+        # leaves with utilities (U=...)
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    u = L3[i][j][k]
+                    node(ax, x_L3[i][j][k], y_L3, f"U={u}", size=700, color='blue')
+
+        fig.tight_layout()
+        if show:
+            plt.show()
+        return fig
 
 
 class Canvas_fol_bc_ask(Canvas):
@@ -1061,7 +1433,7 @@ def plot_NQueens(solution):
     board = np.array([2 * int((i + j) % 2) for j in range(n) for i in range(n)]).reshape((n, n))
     im = Image.open('images/queen_s.png')
     height = im.size[1]
-    im = np.array(im).astype(np.float) / 255
+    im = np.array(im).astype(np.float64) / 255
     fig = plt.figure(figsize=(7, 7))
     ax = fig.add_subplot(111)
     ax.set_title('{} Queens'.format(n))
