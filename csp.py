@@ -156,6 +156,92 @@ class CSP(search.Problem):
         return [var for var in self.variables
                 if self.nconflicts(var, current[var], current) > 0]
 
+    def __repr__(self):
+        """Return a string representation of the CSP showing key information."""
+        lines = []
+
+        # Determine CSP type
+        csp_type = self.__class__.__name__
+        lines.append(f"{csp_type}")
+        lines.append("=" * 60)
+
+        # Basic info
+        lines.append(f"Variables: {len(self.variables)}")
+        lines.append(f"  {self.variables[:10]}{'...' if len(self.variables) > 10 else ''}")
+
+        # Domain info
+        if hasattr(self.domains, 'value'):
+            # UniversalDict
+            lines.append(f"Domain (all variables): {self.domains.value}")
+        else:
+            # Regular dict
+            sample_var = self.variables[0] if self.variables else None
+            if sample_var:
+                lines.append(f"Domain (sample): {self.domains[sample_var]}")
+
+        # Neighbors/constraints
+        total_constraints = sum(len(v) for v in self.neighbors.values()) // 2
+        lines.append(f"Constraints: ~{total_constraints} (between neighbors)")
+
+        # Show sample neighbors
+        sample_vars = self.variables[:3]
+        lines.append(f"Sample neighbors:")
+        for var in sample_vars:
+            neighbors_list = self.neighbors.get(var, [])
+            neighbor_str = str(neighbors_list[:5])
+            if len(neighbors_list) > 5:
+                neighbor_str = neighbor_str[:-1] + ", ...]"
+            lines.append(f"  {var}: {neighbor_str}")
+
+        return "\n".join(lines)
+
+    def _repr_html_(self):
+        """Return HTML representation for Jupyter notebooks with visualization."""
+        try:
+            import networkx as nx
+            import matplotlib.pyplot as plt
+            from io import BytesIO
+            import base64
+
+            # Create graph
+            G = nx.Graph(self.neighbors)
+
+            # Create figure
+            fig, ax = plt.subplots(figsize=(10, 8))
+            pos = nx.spring_layout(G, k=0.5, iterations=50, seed=42)
+
+            # Draw graph
+            nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue',
+                    node_size=1000, font_size=10, font_weight='bold',
+                    edge_color='gray', width=2)
+
+            # Add title
+            ax.set_title(f'{self.__class__.__name__} - {len(self.variables)} variables, '
+                        f'{sum(len(v) for v in self.neighbors.values()) // 2} constraints',
+                        fontsize=14, fontweight='bold')
+
+            # Convert plot to base64 string
+            buf = BytesIO()
+            plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+            plt.close(fig)
+            buf.seek(0)
+            img_str = base64.b64encode(buf.read()).decode()
+
+            # Create HTML with both text info and graph
+            text_repr = self.__repr__().replace('\n', '<br>')
+            html = f'''
+            <div style="font-family: monospace; background: #f5f5f5; padding: 10px; border-radius: 5px;">
+                {text_repr}
+            </div>
+            <div style="margin-top: 10px;">
+                <img src="data:image/png;base64,{img_str}" />
+            </div>
+            '''
+            return html
+        except Exception as e:
+            # Fall back to text representation if visualization fails
+            return f'<pre>{self.__repr__()}</pre>'
+
 
 # ______________________________________________________________________________
 # Constraint Propagation with AC3
