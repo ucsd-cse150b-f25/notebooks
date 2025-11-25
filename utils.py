@@ -115,6 +115,16 @@ def argmax_random_tie(seq, key=identity):
     return max(shuffled(seq), key=key)
 
 
+def argmax(seq, key=identity):
+    """Return an element with highest fn(seq[i]) score; tie goes to first one."""
+    return max(seq, key=key)
+
+
+def argmin(seq, key=identity):
+    """Return an element with lowest fn(seq[i]) score; tie goes to first one."""
+    return min(seq, key=key)
+
+
 def shuffled(iterable):
     """Randomly shuffle a copy of iterable."""
     items = list(iterable)
